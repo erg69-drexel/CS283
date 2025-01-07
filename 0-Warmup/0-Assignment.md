@@ -35,10 +35,10 @@ Please provide answers to these questions using markdown notation and place them
 
 
 3. Please provide a link to the repository you are using for this class.
-    [My Repository](https://github.com/erg69-drexel/CS283/tree/main)
+    - [My Repository](https://github.com/erg69-drexel/CS283/tree/main)
 
 4. Briefly describe what you want to get out of this class.
-    I am hoping to get a better understanding of how operating systems work, and how they interact with applications in the real world. I hope to also get a better understanding of how C can be utilized for system programming.
+    - I am hoping to get a better understanding of how operating systems work, and how they interact with applications in the real world. I hope to also get a better understanding of how C can be utilized for system programming.
 
 5. Briefly describe any concerns you might be having with being successful in this class (if any).
-    My main concern for this class is my C knowledge, I haven't used C in almost 2 years, and when I did I really struggled with memory management. I am hoping that I will be able to apply some of the knowledge from CS281 to help me in that area.
+    - My main concern for this class is my C knowledge, I haven't used C in almost 2 years, and when I did I really struggled with memory management. I am hoping that I will be able to apply some of the knowledge from CS281 to help me in that area.
