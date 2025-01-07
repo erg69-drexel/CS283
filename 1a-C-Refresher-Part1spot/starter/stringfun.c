@@ -46,7 +46,6 @@ int count_words(char *str){
     bool word_start;
 
     // Please implement
-    
     return 0;
 }
 
