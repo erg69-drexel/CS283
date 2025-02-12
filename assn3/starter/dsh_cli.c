@@ -46,10 +46,64 @@
  */
 int main()
 {
-    char *cmd_buff;
+    char *cmd_buff = malloc(SH_CMD_MAX * sizeof(char));
+
+//check for successful malloc:
+
+    if (!cmd_buff){
+        return ERR_MALLOC_FAILURE;
+    }
+
+
     int rc = 0;
     command_list_t clist;
 
-    printf(M_NOT_IMPL);
-    exit(EXIT_NOT_IMPL);
+   
+
+    while (1)
+    {
+        printf("%s", SH_PROMPT);
+        if (fgets(cmd_buff, ARG_MAX, stdin) == NULL)
+        {
+            printf("\n");
+            break;
+        }
+
+        
+        // remove the trailing \n from cmd_buff
+        cmd_buff[strcspn(cmd_buff, "\n")] = '\0';
+
+        if (strcmp(cmd_buff, EXIT_CMD) == 0){
+            break;
+        }
+
+
+        // IMPLEMENT THE REST OF THE REQUIREMENTS
+
+        rc = build_cmd_list(cmd_buff, &clist);
+
+       
+
+        if (rc == OK){
+            printf(CMD_OK_HEADER, clist.num);
+            
+            for (int i = 1; i <= clist.num; i++){
+                if (strlen(clist.commands[i].args) > 0){ //if theres args
+                    printf("<%d> %s [%s]\n", i, clist.commands[i].exe, clist.commands[i].args);
+                }else{ //if no args
+                    printf("<%d> %s\n", i, clist.commands[i].exe); 
+                }
+                
+            }
+            
+        }
+        else if (rc == ERR_CMD_OR_ARGS_TOO_BIG || rc == ERR_TOO_MANY_COMMANDS){
+            printf(CMD_ERR_PIPE_LIMIT, CMD_MAX);
+        }else if (rc==WARN_NO_CMDS){
+            printf(CMD_WARN_NO_CMD);
+        }
+
+    
+    }
+
 }

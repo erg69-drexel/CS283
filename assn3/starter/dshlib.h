@@ -33,6 +33,7 @@ typedef struct command_list
 #define WARN_NO_CMDS -1
 #define ERR_TOO_MANY_COMMANDS -2
 #define ERR_CMD_OR_ARGS_TOO_BIG -3
+#define ERR_MALLOC_FAILURE -4
 
 // starter code
 #define M_NOT_IMPL "The requested operation is not implemented yet!\n"
