@@ -38,4 +38,4 @@
 
 - What happens when a process receives SIGSTOP? Can it be caught or ignored like SIGINT? Why or why not?
 
-    > **Answer**:  SIGSTOP is not able to be ignored by the receiving process and puts the process in a stopped process state. 
+    > **Answer**:  SIGSTOP is not able to be ignored by the receiving process and puts the process in a stopped process state. This is due to the SIGSTOP being enforced by the kernel.
