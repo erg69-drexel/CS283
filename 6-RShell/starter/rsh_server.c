@@ -50,11 +50,6 @@ int start_server(char *ifaces, int port, int is_threaded){
     int svr_socket;
     int rc;
 
-    //
-    //TODO:  If you are implementing the extra credit, please add logic
-    //       to keep track of is_threaded to handle this feature
-    //
-
     svr_socket = boot_server(ifaces, port);
     if (svr_socket < 0){
         int err_code = svr_socket;  //server socket will carry error code
@@ -122,6 +117,31 @@ int boot_server(char *ifaces, int port){
 
     // TODO set up the socket - this is very similar to the demo code
 
+    svr_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (svr_socket == -1){
+        perror("socket");
+        printf(CMD_ERR_RDSH_COMM);
+        return ERR_RDSH_COMMUNICATION;
+    }
+
+
+    int enable=1;
+    setsockopt(svr_socket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
+
+    
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = inet_addr(ifaces);
+    addr.sin_port = htons(port);
+
+
+    ret = bind(svr_socket, (const struct sockaddr *) &addr,
+               sizeof(struct sockaddr_in));
+    if (ret == -1) {
+        perror("accept");
+        printf("%s\n", CMD_ERR_RDSH_COMM);
+        return ERR_RDSH_COMMUNICATION;
+    }
+
     /*
      * Prepare for accepting connections. The backlog size is set
      * to 20. So while one request is being processed other requests
@@ -130,6 +150,7 @@ int boot_server(char *ifaces, int port){
     ret = listen(svr_socket, 20);
     if (ret == -1) {
         perror("listen");
+        printf("%s\n", CMD_ERR_RDSH_COMM);
         return ERR_RDSH_COMMUNICATION;
     }
 
@@ -182,8 +203,24 @@ int process_cli_requests(int svr_socket){
     int     rc = OK;    
 
     while(1){
-        // TODO use the accept syscall to create cli_socket 
-        // and then exec_client_requests(cli_socket)
+         
+
+        
+        cli_socket = accept(svr_socket, NULL, NULL);
+        if (cli_socket == -1){
+            perror("accept");
+            printf("%s\n", CMD_ERR_RDSH_COMM);
+            return ERR_RDSH_COMMUNICATION;
+        }
+
+
+        rc = exec_client_requests(cli_socket); //returns OK, OK_EXIT, or ERR_RDSH_COMMUNICATION
+
+        if (rc == OK_EXIT){
+            break; // go to stop server
+        } else if (rc == ERR_RDSH_COMMUNICATION){
+            return rc;
+        }
     }
 
     stop_server(cli_socket);
@@ -235,7 +272,7 @@ int exec_client_requests(int cli_socket) {
     int io_size;
     command_list_t cmd_list;
     int rc;
-    int cmd_rc;
+    int message_rc;
     int last_rc;
     char *io_buff;
 
@@ -246,10 +283,59 @@ int exec_client_requests(int cli_socket) {
 
     while(1) {
         // TODO use recv() syscall to get input
+        rc = recv(cli_socket, io_buff, RDSH_COMM_BUFF_SZ, 0);
+        if (rc == -1){
+            perror("read error");
+            free(io_buff);
+            printf("%s\n", CMD_ERR_RDSH_COMM);
+            return ERR_RDSH_COMMUNICATION;
+        
+        } 
+
+        //null terminate:
+        io_buff[rc] = '\0';
+
+        printf(RCMD_MSG_SVR_EXEC_REQ, io_buff); //print the command
+
+        //check for the built ins:
+        Built_In_Cmds bi_cmd = rsh_match_command(io_buff);
+        if (bi_cmd == BI_CMD_EXIT){
+            printf(RCMD_MSG_CLIENT_EXITED);
+            send_message_string(cli_socket, "Exiting the client...\n");
+            free(io_buff);
+            return OK;
+        } else if (bi_cmd == BI_CMD_STOP_SVR){
+            printf(RCMD_MSG_SVR_STOP_REQ);
+            send_message_string(cli_socket, RCMD_SERVER_EXITED);
+            free(io_buff);
+            return OK_EXIT;
+        }
+
 
         // TODO build up a cmd_list
 
+        memset(&cmd_list, 0, sizeof(command_list_t)); 
+        rc = build_cmd_list(io_buff, &cmd_list);
+        if (rc != OK){
+            if (rc == ERR_CMD_OR_ARGS_TOO_BIG) {
+                send_message_string(cli_socket, CMD_EXE_TOO_LONG);
+            }
+            else if (rc == WARN_NO_CMDS) {
+                send_message_string(cli_socket, CMD_WARN_NO_CMD);
+            }
+            
+            continue;  // Loop for next command
+        }
+
+        
         // TODO rsh_execute_pipeline to run your cmd_list
+        last_rc = rsh_execute_pipeline(cli_socket, &cmd_list);  //returns: exit code of last command executed in pipeline
+        
+        // need to check if successful execute
+        if (last_rc != EXIT_SUCCESS){
+            send_message_string(cli_socket, CMD_ERR_RDSH_EXEC);
+        }
+        
 
         // TODO send appropriate respones with send_message_string
         // - error constants for failures
@@ -257,9 +343,18 @@ int exec_client_requests(int cli_socket) {
         //  - etc.
 
         // TODO send_message_eof when done
+        message_rc = send_message_eof(cli_socket);
+        if (message_rc != OK){
+            free(io_buff);
+            return message_rc;
+        }
+
+        
     }
 
-    return WARN_RDSH_NOT_IMPL;
+    free(io_buff);
+    return OK;
+    
 }
 
 /*
@@ -282,6 +377,7 @@ int send_message_eof(int cli_socket){
     sent_len = send(cli_socket, &RDSH_EOF_CHAR, send_len, 0);
 
     if (sent_len != send_len){
+        printf("%s\n", CMD_ERR_RDSH_COMM);
         return ERR_RDSH_COMMUNICATION;
     }
     return OK;
@@ -308,7 +404,23 @@ int send_message_eof(int cli_socket){
  */
 int send_message_string(int cli_socket, char *buff){
     //TODO implement writing to cli_socket with send()
-    return WARN_RDSH_NOT_IMPL;
+    int len = strlen(buff);
+    int sentMessage = send(cli_socket, buff, len, 0);
+
+    if (sentMessage == -1){
+        printf("%s\n", CMD_ERR_RDSH_COMM);
+        return ERR_RDSH_COMMUNICATION;
+    }
+
+    //need to send EOF
+    int sentEOF = send_message_eof(cli_socket);
+
+    //check for successful send
+    if (sentEOF != OK){
+        return sentEOF;
+    }
+
+    return OK;
 }
 
 
@@ -351,49 +463,100 @@ int send_message_string(int cli_socket, char *buff){
  *                  get this value. 
  */
 int rsh_execute_pipeline(int cli_sock, command_list_t *clist) {
-    int pipes[clist->num - 1][2];  // Array of pipes
-    pid_t pids[clist->num];
-    int  pids_st[clist->num];         // Array to store process IDs
-    Built_In_Cmds bi_cmd;
-    int exit_code;
 
-    // Create all necessary pipes
-    for (int i = 0; i < clist->num - 1; i++) {
-        if (pipe(pipes[i]) == -1) {
-            perror("pipe");
-            exit(EXIT_FAILURE);
+    //first check for build in commands:
+    int rc;
+    rc = exec_built_in_cmd(&clist->commands[0]);
+
+
+    if (rc==BI_NOT_BI){
+        int pipes[clist->num - 1][2];  // Array of pipes
+        pid_t pids[clist->num];
+        int  pids_st[clist->num];         // Array to store process IDs
+        Built_In_Cmds bi_cmd;
+        int exit_code;
+    
+        // Create all necessary pipes
+        for (int i = 0; i < clist->num - 1; i++) {
+            if (pipe(pipes[i]) == -1) {
+                perror("pipe");
+                exit(EXIT_FAILURE);
+            }
         }
+    
+        for (int i = 0; i < clist->num; i++) {
+            // TODO this is basically the same as the piped fork/exec assignment, except for where you connect the begin and end of the pipeline (hint: cli_sock)
+    
+            // TODO HINT you can dup2(cli_sock with STDIN_FILENO, STDOUT_FILENO, etc.
+
+            pids[i] = fork();
+            if (pids[i] == -1) {
+                perror("fork");
+                exit(EXIT_FAILURE);
+            }
+    
+            if (pids[i] == 0) {  // Child process
+                // Set up input pipe for all except first process
+                if (i==0){
+                    dup2(cli_sock, STDIN_FILENO);
+                } 
+
+                if (i > 0) {
+                    dup2(pipes[i-1][0], STDIN_FILENO);
+                }
+
+                if (i==clist->num - 1){
+                    dup2(cli_sock, STDOUT_FILENO);
+                }
+    
+                // Set up output pipe for all except last process
+                if (i < clist->num - 1) {
+                    dup2(pipes[i][1], STDOUT_FILENO);
+                }
+    
+                // Close all pipe ends in child
+                for (int j = 0; j < clist->num - 1; j++) {
+                    close(pipes[j][0]);
+                    close(pipes[j][1]);
+                }
+    
+                // Execute command
+                rc = exec_cmd(&clist->commands[i]); //returns 
+                if (rc == OK){
+                    exit(EXIT_SUCCESS);
+                } else{
+                    exit(EXIT_FAILURE);
+                }
+            }
+    
+        }
+    
+    
+        // Parent process: close all pipe ends
+        for (int i = 0; i < clist->num - 1; i++) {
+            close(pipes[i][0]);
+            close(pipes[i][1]);
+        }
+    
+        // Wait for all children
+        for (int i = 0; i < clist->num; i++) {
+            waitpid(pids[i], &pids_st[i], 0);
+        }
+    
+        //by default get exit code of last process
+        //use this as the return value
+        exit_code = WEXITSTATUS(pids_st[clist->num - 1]);
+        for (int i = 0; i < clist->num; i++) {
+            //if any commands in the pipeline are EXIT_SC
+            //return that to enable the caller to react
+            if (WEXITSTATUS(pids_st[i]) == EXIT_SC)
+                exit_code = EXIT_SC;
+        }
+        return exit_code;
+    } else if (rc == BI_EXECUTED){
+        return EXIT_SUCCESS;
     }
 
-    for (int i = 0; i < clist->num; i++) {
-        // TODO this is basically the same as the piped fork/exec assignment, except for where you connect the begin and end of the pipeline (hint: cli_sock)
-
-        // TODO HINT you can dup2(cli_sock with STDIN_FILENO, STDOUT_FILENO, etc.
-
-    }
-
-
-    // Parent process: close all pipe ends
-    for (int i = 0; i < clist->num - 1; i++) {
-        close(pipes[i][0]);
-        close(pipes[i][1]);
-    }
-
-    // Wait for all children
-    for (int i = 0; i < clist->num; i++) {
-        waitpid(pids[i], &pids_st[i], 0);
-    }
-
-    //by default get exit code of last process
-    //use this as the return value
-    exit_code = WEXITSTATUS(pids_st[clist->num - 1]);
-    for (int i = 0; i < clist->num; i++) {
-        //if any commands in the pipeline are EXIT_SC
-        //return that to enable the caller to react
-        if (WEXITSTATUS(pids_st[i]) == EXIT_SC)
-            exit_code = EXIT_SC;
-    }
-    return exit_code;
 }
 
 /**************   OPTIONAL STUFF  ***************/
@@ -444,58 +607,4 @@ Built_In_Cmds rsh_match_command(const char *input)
     return BI_NOT_BI;
 }
 
-/*
- * rsh_built_in_cmd(cmd_buff_t *cmd)
- *      cmd:  The cmd_buff_t of the command, remember, this is the 
- *            parsed version fo the command
- *   
- *  This optional function accepts a parsed cmd and then checks to see if
- *  the cmd is built in or not.  It calls rsh_match_command to see if the 
- *  cmd is built in or not.  Note that rsh_match_command returns BI_NOT_BI
- *  if the command is not built in. If the command is built in this function
- *  uses a switch statement to handle execution if appropriate.   
- * 
- *  Again, using this function is entirely optional if you are using a different
- *  strategy to handle built-in commands.  
- * 
- *  Returns:
- * 
- *      BI_NOT_BI:   Indicates that the cmd provided as input is not built
- *                   in so it should be sent to your fork/exec logic
- *      BI_EXECUTED: Indicates that this function handled the direct execution
- *                   of the command and there is nothing else to do, consider
- *                   it executed.  For example the cmd of "cd" gets the value of
- *                   BI_CMD_CD from rsh_match_command().  It then makes the libc
- *                   call to chdir(cmd->argv[1]); and finally returns BI_EXECUTED
- *      BI_CMD_*     Indicates that a built-in command was matched and the caller
- *                   is responsible for executing it.  For example if this function
- *                   returns BI_CMD_STOP_SVR the caller of this function is
- *                   responsible for stopping the server.  If BI_CMD_EXIT is returned
- *                   the caller is responsible for closing the client connection.
- * 
- *   AGAIN - THIS IS TOTALLY OPTIONAL IF YOU HAVE OR WANT TO HANDLE BUILT-IN
- *   COMMANDS DIFFERENTLY. 
- */
-Built_In_Cmds rsh_built_in_cmd(cmd_buff_t *cmd)
-{
-    Built_In_Cmds ctype = BI_NOT_BI;
-    ctype = rsh_match_command(cmd->argv[0]);
 
-    switch (ctype)
-    {
-    // case BI_CMD_DRAGON:
-    //     print_dragon();
-    //     return BI_EXECUTED;
-    case BI_CMD_EXIT:
-        return BI_CMD_EXIT;
-    case BI_CMD_STOP_SVR:
-        return BI_CMD_STOP_SVR;
-    case BI_CMD_RC:
-        return BI_CMD_RC;
-    case BI_CMD_CD:
-        chdir(cmd->argv[1]);
-        return BI_EXECUTED;
-    default:
-        return BI_NOT_BI;
-    }
-}

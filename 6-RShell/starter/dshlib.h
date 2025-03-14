@@ -37,9 +37,11 @@ typedef struct command_list{
 #define SPACE_CHAR  ' '
 #define PIPE_CHAR   '|'
 #define PIPE_STRING "|"
+#define QUOTE_CHAR '"'
 
 #define SH_PROMPT       "dsh4> "
 #define EXIT_CMD        "exit"
+#define CD_CMD          "cd"
 #define RC_SC           99
 #define EXIT_SC         100
 
@@ -88,5 +90,6 @@ int execute_pipeline(command_list_t *clist);
 #define CMD_WARN_NO_CMD     "warning: no commands provided\n"
 #define CMD_ERR_PIPE_LIMIT  "error: piping limited to %d commands\n"
 #define BI_NOT_IMPLEMENTED "not implemented"
+#define CMD_EXE_TOO_LONG    "error: Executable too long\n"
 
 #endif

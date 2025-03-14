@@ -303,7 +303,7 @@ int build_cmd_list(char *cmd_line, command_list_t *clist)
         }
 
         //now split into the exe and args:
-        ret = parse_args(pt, &clist->commands[counter-1]);
+        ret = parse_args_cmd(pt, &clist->commands[counter-1]);
          
         if (ret == OK){
             //increase to next command
@@ -327,7 +327,7 @@ int build_cmd_list(char *cmd_line, command_list_t *clist)
 
 
 
-int parse_args(char *arg_string, cmd_buff_t *cmd){
+int parse_args_cmd(char *arg_string, cmd_buff_t *cmd){
     
     
 
